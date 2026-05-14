@@ -160,15 +160,6 @@ uv run mypy approck_fastapi_utils
 uv run pytest
 ```
 
-## Releasing
-
-Bump the version in `pyproject.toml`, commit, tag (`git tag vX.Y.Z && git push origin vX.Y.Z`), then build and publish with uv after [configuring PyPI authentication](https://docs.astral.sh/uv/guides/package/#publishing-your-package):
-
-```bash
-uv build
-uv publish
-```
-
 ## License
 
 MIT — see [LICENSE](LICENSE).
