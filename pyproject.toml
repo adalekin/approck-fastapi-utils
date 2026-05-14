@@ -1,0 +1,70 @@
+[project]
+name = "approck-fastapi-utils"
+version = "0.1.10"
+description = "Small helpers for FastAPI: JWT header auth, JSON responses, exception handlers, and Pydantic query types."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "Aleksey Dalekin", email = "ald@approck.pro" }]
+keywords = ["fastapi", "pydantic", "jwt", "sqlalchemy", "api"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+dependencies = [
+    "fastapi>=0.109.2",
+    "pydantic>=2.4.1",
+    "typing-extensions>=4.8.0",
+]
+
+[project.optional-dependencies]
+sqlalchemy = ["sqlalchemy>=2.0.0"]
+
+[project.urls]
+Repository = "https://github.com/approck/approck-fastapi-utils"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.10.0",
+    "pre-commit>=3.7.1",
+    "pytest>=8.2.0",
+    "ruff>=0.4.4",
+]
+
+[build-system]
+requires = ["hatchling>=1.21.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.sdist]
+include = ["/approck_fastapi_utils", "/README.md", "/LICENSE"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["approck_fastapi_utils"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = "approck_fastapi_utils.types"
+# Dynamic metaclass / generic cache; strict typing is impractical here.
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "sqlalchemy.*"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
