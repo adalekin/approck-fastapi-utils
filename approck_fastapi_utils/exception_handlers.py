@@ -1,7 +1,7 @@
 from fastapi import HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
-from .exceptions import CustomException, NotFound, Unauthorized, Forbidden
+from .exceptions import CustomException, Forbidden, NotFound, Unauthorized
 
 
 async def http_exception_handler(
