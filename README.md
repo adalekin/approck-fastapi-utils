@@ -28,101 +28,112 @@ uv add "approck-fastapi-utils[sqlalchemy]"
 
 | Module | Purpose |
 |--------|---------|
-| `approck_fastapi_utils.auth` | `ensure_current_user` dependency: reads `X-Jwt-Payload`, decodes base64 JSON, raises `Forbidden` if invalid |
-| `approck_fastapi_utils.jwt` | `get_token_from_header`, `decode_payload` |
-| `approck_fastapi_utils.exceptions` | `Unauthorized`, `Forbidden`, `NotFound`, `CustomException` |
-| `approck_fastapi_utils.exception_handlers` | Handlers for `HTTPException` and custom exceptions |
-| `approck_fastapi_utils.responses` | `SuccessfulResponse`, `FailedResponse`, OpenAPI-friendly `ResponseSchema` |
+| `approck_fastapi_utils` | Public re-exports of the most common symbols |
+| `approck_fastapi_utils.auth` | `ensure_current_user`, `optional_current_user`, `ensure_current_superuser`, `JwtPayload` |
+| `approck_fastapi_utils.jwt` | `encode_payload`, `decode_payload`, `get_token_from_header` |
+| `approck_fastapi_utils.exceptions` | `CustomException` hierarchy with HTTP status codes |
+| `approck_fastapi_utils.exception_handlers` | Handlers and `register_exception_handlers(profile=...)` |
+| `approck_fastapi_utils.responses` | JSON responses and OpenAPI schema helpers |
 | `approck_fastapi_utils.response` | Prebuilt 404 response schema |
 | `approck_fastapi_utils.types` | `CommaSeparatedList` for query parameters |
+| `approck_fastapi_utils.testing` | JWT/auth helpers for pytest |
+| `approck_fastapi_utils.gateway` | `build_gateway_headers` for proxy routes |
 | `approck_fastapi_utils.sqlalchemy.exception_handlers` | Handlers for `DBAPIError` and `NoResultFound` (requires the `sqlalchemy` extra) |
 
 ## Usage
 
 ### Register exception handlers
 
-Wire handlers once on the `FastAPI` app so `HTTPException` and library exceptions share the same JSON shape (`successful`, `detail`, and `code` for custom types).
+Use a preset instead of wiring handlers manually:
 
 ```python
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 
-from approck_fastapi_utils.exception_handlers import custom_exception_handler, http_exception_handler
-from approck_fastapi_utils.exceptions import CustomException
+from approck_fastapi_utils import register_exception_handlers
 
 app = FastAPI()
-app.add_exception_handler(HTTPException, http_exception_handler)
-app.add_exception_handler(CustomException, custom_exception_handler)
+register_exception_handlers(app, profile="api")
 ```
 
-### `CustomException` in one breath
+Profiles:
 
-**Raise domain errors like normal Python exceptions — the client always gets the same JSON:** `successful: false`, **`code` = your class name** (great for UI/tests), `detail` = message. Built-ins map to HTTP for free: `Unauthorized` 401, `Forbidden` 403, `NotFound` 404; your own subclasses default to **400** unless you add a dedicated handler.
+| Profile | Handlers |
+|---------|----------|
+| `minimal` | `HTTPException`, `CustomException` |
+| `api` | `minimal` + `RequestValidationError`, `NoResultFound` |
+| `internal` | `api` + `DBAPIError` (with optional `database_sanitize=True`) |
+
+### `CustomException` and HTTP status codes
+
+Built-in exceptions map to HTTP codes automatically. Subclasses can set `status_code` on the class or pass it to `__init__`:
 
 ```python
-from approck_fastapi_utils.exceptions import CustomException, NotFound
+from approck_fastapi_utils import Conflict, CustomException, NotFound
 
 class OrderAlreadyPaid(CustomException):
-    pass
+    status_code = 409
 
-raise OrderAlreadyPaid("already paid")  # -> 400 + code "OrderAlreadyPaid"
-raise NotFound("missing")               # -> 404 + code "NotFound"
+raise Conflict("already exists")          # -> 409
+raise NotFound("missing")                   # -> 404
+raise CustomException("bad", status_code=418)
 ```
 
-With the optional SQLAlchemy extra, register database errors the same way:
+Error body contract: `{"successful": false, "code": "...", "detail": "..."}`.
 
-```python
-from sqlalchemy.exc import DBAPIError, NoResultFound
+### JWT payload header
 
-from approck_fastapi_utils.sqlalchemy.exception_handlers import database_error_handler, database_not_found_handler
-
-app.add_exception_handler(DBAPIError, database_error_handler)
-app.add_exception_handler(NoResultFound, database_not_found_handler)
-```
-
-### JWT payload header (`ensure_current_user`)
-
-`ensure_current_user` expects a header **`X-Jwt-Payload`** whose value is **URL-safe base64-encoded JSON** (for example the same JSON you would put in a JWT payload, without the signature segment). The dependency returns the decoded `dict` or raises `Forbidden`.
+`ensure_current_user` reads **`X-JWT-Payload`** (URL-safe base64 JSON). Invalid payloads raise `Unauthorized` (401).
 
 ```python
 from fastapi import APIRouter, Depends
 
-from approck_fastapi_utils.auth import ensure_current_user
+from approck_fastapi_utils import ensure_current_user, optional_current_user
 from approck_fastapi_utils.responses import SuccessfulResponse
 
 router = APIRouter()
 
 @router.get("/me")
 async def read_me(payload: dict = Depends(ensure_current_user)):
-    # use payload (e.g. "sub", roles) in your logic
     return SuccessfulResponse()
+
+@router.get("/public")
+async def public(payload: dict | None = Depends(optional_current_user())):
+    ...
 ```
 
-### Manual JWT helpers
-
-Useful if you build another header scheme but still want the same parsing helpers.
+### JWT encode/decode
 
 ```python
-from approck_fastapi_utils.jwt import decode_payload, get_token_from_header
+from approck_fastapi_utils import decode_payload, encode_payload
 
-token = get_token_from_header(authorization)  # "Bearer <jwt>" -> "<jwt>"
-claims = decode_payload(base64_payload_string)  # base64url JSON -> dict
+payload = {"user_id": 1, "is_superuser": False}
+encoded = encode_payload(payload)
+claims = decode_payload(encoded)  # returns None on invalid input
+```
+
+### Testing helpers
+
+```python
+from approck_fastapi_utils.testing import auth_headers, override_current_user
+
+headers = auth_headers(user_id=42, is_superuser=True)
+override_current_user(app, user_id=42)
 ```
 
 ### Standard JSON responses and OpenAPI examples
 
-`SuccessfulResponse` / `FailedResponse` return `{"successful": true|false}`. Their `.schema()` helpers merge into route `responses` for OpenAPI; `HTTP_404_NOT_FOUND` is a ready-made 404 entry.
-
 ```python
-from fastapi import APIRouter
-
-from approck_fastapi_utils.response import HTTP_404_NOT_FOUND
-from approck_fastapi_utils.responses import FailedResponse, SuccessfulResponse
-
-router = APIRouter()
+from approck_fastapi_utils import HTTP_404_NOT_FOUND, SuccessfulResponse, custom_exception_response_schema, error_response_schema
+from approck_fastapi_utils.exceptions import NotFound
 
 @router.get(
     "/health",
-    responses={**SuccessfulResponse.schema(), **FailedResponse.schema(), **HTTP_404_NOT_FOUND},
+    responses={
+        **SuccessfulResponse.schema(),
+        **error_response_schema(400, "Bad request"),
+        **custom_exception_response_schema(NotFound),
+        **HTTP_404_NOT_FOUND,
+    },
 )
 async def health():
     return SuccessfulResponse()
@@ -130,23 +141,34 @@ async def health():
 
 ### Comma-separated query lists
 
-`CommaSeparatedList[T]` accepts a single comma-separated string (e.g. `?ids=1,2,3`) or repeated query values and validates elements as `T`.
+`CommaSeparatedList[T]` accepts `?ids=1,2,3`. Whitespace is trimmed, empty string yields `[]`.
 
 ```python
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import Query
 
-from approck_fastapi_utils.types import CommaSeparatedList
+from approck_fastapi_utils import CommaSeparatedList
 
-router = APIRouter()
-
-@router.get("/items")
-async def list_items(
-    ids: Annotated[CommaSeparatedList[int], Query(description="Example: 1,2,3")],
-):
-    return {"ids": list(ids)}
+ids: Annotated[CommaSeparatedList[int], Query(description="Example: 1,2,3")]
 ```
+
+### Gateway/proxy headers
+
+```python
+from approck_fastapi_utils import build_gateway_headers
+
+headers = build_gateway_headers(
+    authorization=request.headers.get("Authorization"),
+    x_jwt_payload=request.headers.get("X-JWT-Payload"),
+)
+```
+
+## Breaking changes in 0.2.0
+
+- Invalid `X-JWT-Payload` in `ensure_current_user` now raises `Unauthorized` (401) instead of `Forbidden` (403).
+- `decode_payload` returns `None` instead of raising on invalid input.
+- Header alias is explicitly `X-JWT-Payload`.
 
 ## Development
 

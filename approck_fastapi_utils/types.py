@@ -33,6 +33,13 @@ class TypeParametersMemoizer(type):
 
 
 class CommaSeparatedList(list, metaclass=TypeParametersMemoizer):
+    """Parse comma-separated query values.
+
+    Accepts ``?ids=1,2,3`` or repeated query params. Whitespace around items is
+    stripped. An empty string (``?ids=``) yields an empty list. Duplicate values
+    are preserved.
+    """
+
     @classmethod
     def __get_pydantic_core_schema__(cls, _source_type: Any, handler: GetCoreSchemaHandler) -> CoreSchema:
         return core_schema.no_info_before_validator_function(cls.validate, handler(list[cls._get_type_parameters()]))
@@ -41,8 +48,12 @@ class CommaSeparatedList(list, metaclass=TypeParametersMemoizer):
     def validate(cls, v: Any):
         adapter = cls._get_type_adapter()
         if isinstance(v, str):
+            if not v.strip():
+                return []
             v = map(str.strip, v.split(","))
         elif isinstance(v, list) and all(isinstance(x, str) for x in v):
+            if len(v) == 1 and not v[0].strip():
+                return []
             v = map(str.strip, itertools.chain.from_iterable(x.split(",") for x in v))
         return adapter.validate_python(v)
 
