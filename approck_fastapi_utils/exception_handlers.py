@@ -42,6 +42,14 @@ def resolve_custom_exception_status_code(exc: CustomException) -> int:
     return status.HTTP_400_BAD_REQUEST
 
 
+def custom_exception_response(exc: CustomException) -> JSONResponse:
+    """Build a JSON response for a custom exception."""
+    return JSONResponse(
+        content={"successful": False, "code": exc.__class__.__name__, "detail": str(exc)},
+        status_code=resolve_custom_exception_status_code(exc),
+    )
+
+
 async def http_exception_handler(
     _: Request,
     exc: HTTPException,
@@ -60,12 +68,7 @@ async def custom_exception_handler(
     _: Request,
     exc: CustomException,
 ) -> JSONResponse:
-    status_code = resolve_custom_exception_status_code(exc)
-
-    return JSONResponse(
-        content={"successful": False, "code": exc.__class__.__name__, "detail": str(exc)},
-        status_code=status_code,
-    )
+    return custom_exception_response(exc)
 
 
 async def validation_exception_handler(

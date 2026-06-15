@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from . import jwt
 from .auth import ensure_current_user
+from .idempotency.stores.protocol import IdempotencyStore
 
 
 def make_jwt_payload_header(*, user_id: int = 1, is_superuser: bool = False, **extra: Any) -> str:
@@ -37,3 +38,16 @@ def override_current_user(app: FastAPI, user_id: int = 1, **claims: Any) -> dict
 
     app.dependency_overrides[ensure_current_user] = _test_user
     return payload
+
+
+def patch_idempotency_store(app: FastAPI, store: IdempotencyStore) -> None:
+    """Replace the idempotency store used by ``IdempotencyMiddleware`` in tests."""
+
+    def _patch_middleware(middleware_stack) -> None:
+        if hasattr(middleware_stack, "app"):
+            if hasattr(middleware_stack.app, "store") and hasattr(middleware_stack.app, "key_header"):
+                middleware_stack.app.store = store
+            if hasattr(middleware_stack.app, "app"):
+                _patch_middleware(middleware_stack.app)
+
+    _patch_middleware(app.middleware_stack)

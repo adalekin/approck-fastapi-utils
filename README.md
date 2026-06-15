@@ -24,6 +24,12 @@ Optional SQLAlchemy handlers:
 uv add "approck-fastapi-utils[sqlalchemy]"
 ```
 
+Optional Redis store for production idempotency:
+
+```bash
+uv add "approck-fastapi-utils[redis]"
+```
+
 ## What is included
 
 | Module | Purpose |
@@ -38,6 +44,8 @@ uv add "approck-fastapi-utils[sqlalchemy]"
 | `approck_fastapi_utils.types` | `CommaSeparatedList` for query parameters |
 | `approck_fastapi_utils.testing` | JWT/auth helpers for pytest |
 | `approck_fastapi_utils.gateway` | `build_gateway_headers` for proxy routes |
+| `approck_fastapi_utils.idempotency` | `IdempotencyMiddleware`, `InMemoryIdempotencyStore` |
+| `approck_fastapi_utils.idempotency.stores.redis` | `RedisIdempotencyStore` (requires the `redis` extra) |
 | `approck_fastapi_utils.sqlalchemy.exception_handlers` | Handlers for `DBAPIError` and `NoResultFound` (requires the `sqlalchemy` extra) |
 
 ## Usage
@@ -163,6 +171,38 @@ headers = build_gateway_headers(
     x_jwt_payload=request.headers.get("X-JWT-Payload"),
 )
 ```
+
+### Idempotency middleware
+
+Use `Idempotency-Key` on POST/PUT/PATCH/DELETE requests. Successful responses (< 400) are cached and replayed for duplicate keys. Payload mismatches return HTTP 409.
+
+```python
+import redis.asyncio as aioredis
+from fastapi import FastAPI
+
+from approck_fastapi_utils import IdempotencyMiddleware
+from approck_fastapi_utils.idempotency.stores.redis import RedisIdempotencyStore
+
+redis_client = aioredis.from_url("redis://localhost:6379/0", decode_responses=True)
+store = RedisIdempotencyStore(redis_client)
+
+app = FastAPI()
+app.add_middleware(
+    IdempotencyMiddleware,
+    store=store,
+    ttl=300,
+    validate_signature=True,
+)
+```
+
+For tests, use `InMemoryIdempotencyStore` or `patch_idempotency_store(app, store)` from `approck_fastapi_utils.testing`.
+
+Response headers:
+
+| Header | Values |
+|--------|--------|
+| `X-Idempotency-Status` | `new` for the first successful request, `hit` for cached replay |
+| `X-Idempotency-Signature` | SHA-256 of method, path, query, and body when signature validation is enabled |
 
 ## Breaking changes in 0.2.0
 

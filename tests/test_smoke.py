@@ -43,6 +43,7 @@ def test_sqlalchemy_subpackage_import() -> None:
 
 def test_integrity_error_maps_to_conflict() -> None:
     import asyncio
+    import json
 
     from sqlalchemy.exc import DBAPIError, IntegrityError
 
@@ -51,7 +52,7 @@ def test_integrity_error_maps_to_conflict() -> None:
     integrity_error = IntegrityError("INSERT INTO users", {}, Exception("Duplicate entry"))
     response = asyncio.run(database_error_handler(None, integrity_error))  # type: ignore[arg-type]
     assert response.status_code == 409
-    assert response.body == b'{"successful":false,"detail":"Duplicate entry"}'
+    assert json.loads(response.body) == {"successful": False, "code": "Conflict", "detail": "Duplicate entry"}
 
     generic_error = DBAPIError("SELECT 1", {}, Exception("syntax error"))
     response = asyncio.run(database_error_handler(None, generic_error))  # type: ignore[arg-type]

@@ -19,6 +19,7 @@ from .exceptions import (
     UnprocessableEntity,
 )
 from .gateway import build_gateway_headers
+from .idempotency import IdempotencyMiddleware, IdempotencyStore, InMemoryIdempotencyStore
 from .jwt import decode_payload, encode_payload, get_token_from_header
 from .response import HTTP_404_NOT_FOUND
 from .responses import (
@@ -37,6 +38,9 @@ __all__ = [
     "FailedResponse",
     "Forbidden",
     "HTTP_404_NOT_FOUND",
+    "IdempotencyMiddleware",
+    "IdempotencyStore",
+    "InMemoryIdempotencyStore",
     "JwtPayload",
     "NotFound",
     "ServiceUnavailable",
